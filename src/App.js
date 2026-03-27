@@ -1,25 +1,36 @@
 import React from 'react';
-import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import Stats from './components/Stats';
-import HowItWorks from './components/HowItWorks';
-import Features from './components/Features';
-import Pricing from './components/Pricing';
-import Footer from './components/Footer';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Landing   from './pages/Landing';
+import Browse    from './pages/Browse';
+import Explore   from './pages/Explore';
+import Creators  from './pages/Creators';
+import Events    from './pages/Events';
+import Pricing   from './pages/Pricing';
+import Login     from './pages/Login';
+import Signup    from './pages/Signup';
+import PlanPage  from './pages/PlanPage';
+import Dashboard from './pages/Dashboard';
+import Upload    from './pages/Upload';
+import Admin     from './pages/Admin';
 import './index.css';
 
-function App() {
+export default function App() {
   return (
-    <div>
-      <Navbar />
-      <Hero />
-      <Stats />
-      <HowItWorks />
-      <Features />
-      <Pricing />
-      <Footer />
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/"              element={<Landing />} />
+        <Route path="/browse"        element={<Browse />} />
+        <Route path="/explore"       element={<Explore />} />
+        <Route path="/creators"      element={<Creators />} />
+        <Route path="/events"        element={<Events />} />
+        <Route path="/pricing"       element={<Pricing />} />
+        <Route path="/login"         element={<Login />} />
+        <Route path="/signup"        element={<Signup />} />
+        <Route path="/plan/:slug"    element={<PlanPage />} />
+        <Route path="/dashboard"     element={<Dashboard />} />
+        <Route path="/upload"        element={<Upload />} />
+        <Route path="/admin"         element={<Admin />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;
