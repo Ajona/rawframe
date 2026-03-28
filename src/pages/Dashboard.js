@@ -1,3 +1,4 @@
+import PaymentModal from '../components/PaymentModal';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -199,6 +200,7 @@ function Uploads() {
 /* ── TRANSACTIONS ─────────────────────── */
 function Transactions() {
   const [tab, setTab] = useState('all');
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const txns = [
     { id:'TXN-0091', file:'NairobiMarathon_raw_047.jpg', buyer:'buyer_***293', amount:4.99, platform:1.75, creator:3.24, date:'Mar 22, 2025', status:'paid' },
     { id:'TXN-0090', file:'FashionWeek_collection_12.zip', buyer:'studio_***841', amount:18.00, platform:6.30, creator:11.70, date:'Mar 22, 2025', status:'paid' },
@@ -250,9 +252,22 @@ function Transactions() {
         ))}
       </div>
       <div style={{ marginTop:20, display:'flex', justifyContent:'flex-end' }}>
-        <button style={{ background:C.ink, color:C.cream, border:'none', borderRadius:2,
-          padding:'0.75rem 2rem', fontSize:'0.875rem', fontWeight:500,
-          cursor:'pointer', fontFamily:"'DM Sans',sans-serif" }}>Withdraw $26.83</button>
+        <button onClick={() => setShowWithdraw(true)}
+          style={{ background:C.ink, color:C.cream, border:'none', borderRadius:2,
+            padding:'0.75rem 2rem', fontSize:'0.875rem', fontWeight:500,
+            cursor:'pointer', fontFamily:"'DM Sans',sans-serif" }}>
+          Withdraw $26.83
+        </button>
+        <PaymentModal
+          isOpen={showWithdraw}
+          onClose={() => setShowWithdraw(false)}
+          onSuccess={() => { setShowWithdraw(false); }}
+          amount="26.83"
+          currency="USD"
+          title="Withdraw Earnings"
+          subtitle="Choose where to send your funds"
+          mode="withdraw"
+        />
       </div>
     </div>
   );
@@ -318,7 +333,8 @@ function Collections() {
 
 /* ── PROFILE ──────────────────────────── */
 function Profile() {
-  const { user } = useAuth();
+  const { user, addPaymentMethod, removePaymentMethod, setPrimaryMethod } = useAuth();
+  const [showAddPayment, setShowAddPayment] = useState(false);
   const [form, setForm] = useState({
     name: user?.name || '', bio:'Documentary and street photographer based in Nairobi.',
     website:'https://janedoe.photo', instagram:'@janedoe_photo',
@@ -399,13 +415,78 @@ function Profile() {
           })}
         </div>
       </div>
+      {/* Payment Methods */}
+      <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:8, padding:'1.5rem', marginBottom:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
+          <div style={{ fontSize:'0.78rem', textTransform:'uppercase', letterSpacing:'0.08em', color:C.muted, fontWeight:500 }}>
+            Payment & Withdrawal Methods
+          </div>
+          <button onClick={() => setShowAddPayment(true)}
+            style={{ background:'transparent', border:`1px solid ${C.border}`, borderRadius:2,
+              padding:'0.35rem 0.85rem', fontSize:'0.78rem', color:C.ink,
+              cursor:'pointer', fontFamily:"'DM Sans',sans-serif" }}>
+            + Add Method
+          </button>
+        </div>
 
+        {(user?.paymentMethods||[]).length === 0 ? (
+          <div style={{ textAlign:'center', padding:'1.5rem 0', color:C.muted, fontSize:'0.875rem' }}>
+            No payment methods saved. Add one to enable withdrawals.
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {(user?.paymentMethods||[]).map(pm => (
+              <div key={pm.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'0.75rem 1rem',
+                border:`1px solid ${pm.primary?C.gold:C.border}`, borderRadius:6,
+                background:pm.primary?'#faf7f0':'#fff' }}>
+                <span style={{ fontSize:'1.2rem' }}>{pm.icon}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:500, fontSize:'0.875rem' }}>{pm.label}</div>
+                  <div style={{ fontSize:'0.75rem', color:C.muted }}>{pm.detail}</div>
+                </div>
+                {pm.primary && (
+                  <span style={{ fontSize:'0.68rem', background:'rgba(201,168,76,0.15)', color:C.gold,
+                    padding:'0.15rem 0.5rem', borderRadius:100, fontWeight:500 }}>Primary</span>
+                )}
+                <button onClick={() => setPrimaryMethod(pm.id)}
+                  style={{ background:'transparent', border:`1px solid ${C.border}`, borderRadius:2,
+                    padding:'0.25rem 0.5rem', fontSize:'0.72rem', color:C.muted,
+                    cursor:'pointer', display:pm.primary?'none':'block' }}>Set Primary</button>
+                <button onClick={() => removePaymentMethod(pm.id)}
+                  style={{ background:'transparent', border:'none', color:C.danger,
+                    fontSize:'0.78rem', cursor:'pointer' }}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <button onClick={handleSave}
         style={{ background: saved ? C.success : C.ink, color:C.cream, border:'none',
           borderRadius:2, padding:'0.75rem 2rem', fontSize:'0.9rem', fontWeight:500,
           cursor:'pointer', fontFamily:"'DM Sans',sans-serif", transition:'background 0.3s' }}>
         {saved ? '✓ Saved' : 'Save Changes'}
       </button>
+      <PaymentModal
+        isOpen={showAddPayment}
+        onClose={() => setShowAddPayment(false)}
+        onSuccess={({ method, fields }) => {
+          const icons = { mpesa:'🟢', airtel:'🔴', mtn:'🟡', card:'💳', googlepay:'🔵', applepay:'⚫', paypal:'🔷' };
+          const labels = { mpesa:'M-Pesa', airtel:'Airtel Money', mtn:'MTN Mobile Money', card:'Visa/Mastercard', googlepay:'Google Pay', applepay:'Apple Pay', paypal:'PayPal' };
+          addPaymentMethod({
+            id: 'pm_' + Date.now(),
+            type: method,
+            label: labels[method],
+            detail: fields.phone || fields.email || fields.number?.slice(-4).padStart(fields.number?.length,'*') || method,
+            icon: icons[method],
+            primary: (user?.paymentMethods||[]).length === 0,
+          });
+          setShowAddPayment(false);
+        }}
+        amount={null}
+        title="Add Payment Method"
+        subtitle="Used for receiving withdrawals from RawFrame"
+        mode="save"
+      />
     </div>
   );
 }

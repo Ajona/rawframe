@@ -122,7 +122,10 @@ export default function Browse() {
                 <span style={{ fontSize:'1.1rem', fontWeight:700, color:C.gold }}>
                   ${item.price.toFixed(2)}
                 </span>
-                <button onClick={() => navigate('/login')}
+                <button onClick={() => navigate('/checkout', { state:{ item:{
+                  title:item.title, price:item.price, type:item.type,
+                  tag:item.tag, creator:'Jane Doe', emoji:item.emoji, bg:item.bg
+                }}})}
                   style={{ background:C.gold, color:C.ink, border:'none',
                     borderRadius:2, padding:'0.35rem 0.85rem', fontSize:'0.78rem',
                     fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" }}>
