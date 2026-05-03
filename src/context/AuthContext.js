@@ -1,64 +1,125 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authAPI, usersAPI, setTokens, clearTokens, getToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const MOCK_USERS = [
-  { id:1, name:'Jane Doe',   email:'jane@rawframe.io',  role:'creator', plan:'pro',     initials:'JD',
-    paymentMethods:[ { id:'pm1', type:'mpesa',      label:'M-Pesa',      detail:'+254 712 345 678', icon:'🟢', primary:true  },
-                     { id:'pm2', type:'visa',        label:'Visa',        detail:'**** 4242',        icon:'💳', primary:false } ] },
-  { id:2, name:'Admin User', email:'admin@rawframe.io', role:'admin',   plan:'studio',  initials:'AU', paymentMethods:[] },
-];
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user,    setUser]    = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (email, password) => {
-    const found = MOCK_USERS.find(u => u.email === email);
-    if (found) { setUser({ ...found }); return { ok:true, user:found }; }
-    return { ok:false, error:'Invalid email or password' };
+  // Restore session on page load
+  useEffect(() => {
+    const restoreSession = async () => {
+      const token = getToken();
+      if (!token) { setLoading(false); return; }
+      try {
+        const { data } = await authAPI.getMe();
+        setUser(data.user);
+      } catch (_) {
+        clearTokens();
+      } finally {
+        setLoading(false);
+      }
+    };
+    restoreSession();
+  }, []);
+
+  const login = async (email, password) => {
+    try {
+      const { data } = await authAPI.login(email, password);
+      setTokens(data.accessToken, data.refreshToken);
+      setUser(data.user);
+      return { ok: true, user: data.user };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Sign in failed.' };
+    }
   };
 
-  const loginWithGoogle = (googleProfile) => {
-    const newUser = {
-      id: Date.now(), name: googleProfile.name, email: googleProfile.email,
-      role:'creator', plan:'starter', initials: googleProfile.name.slice(0,2).toUpperCase(),
-      avatar: googleProfile.picture || null, paymentMethods:[],
-    };
-    setUser(newUser);
-    return { ok:true, user:newUser, isNew:true };
+  const loginWithGoogle = async (idToken, plan = 'starter', fields = []) => {
+    try {
+      const { data } = await authAPI.loginWithGoogle(idToken, plan, fields);
+      setTokens(data.accessToken, data.refreshToken);
+      setUser(data.user);
+      return { ok: true, user: data.user, isNew: data.isNew };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Google sign-in failed.' };
+    }
   };
 
-  const signup = (name, email, password, plan='starter') => {
-    const newUser = {
-      id:Date.now(), name, email, role:'creator', plan,
-      initials:name.slice(0,2).toUpperCase(), paymentMethods:[],
-    };
-    setUser(newUser);
-    return { ok:true, user:newUser };
+  const signup = async (name, email, password, plan = 'starter', fields = []) => {
+    try {
+      const { data } = await authAPI.signup(name, email, password, plan, fields);
+      setTokens(data.accessToken, data.refreshToken);
+      setUser(data.user);
+      return { ok: true, user: data.user };
+    } catch (err) {
+      const serverErrors = err.response?.data?.errors;
+      const message = serverErrors
+        ? serverErrors.map(e => e.msg).join(', ')
+        : err.response?.data?.error || 'Sign up failed.';
+      return { ok: false, error: message };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('rawframe_refresh');
+      await authAPI.logout(refreshToken);
+    } catch (_) {}
+    clearTokens();
+    setUser(null);
   };
 
   const updatePlan = (plan) => setUser(u => ({ ...u, plan }));
 
-  const addPaymentMethod = (method) => {
-    setUser(u => ({
-      ...u,
-      paymentMethods: method.primary
-        ? [method, ...(u.paymentMethods||[]).map(m => ({ ...m, primary:false }))]
-        : [...(u.paymentMethods||[]), method],
-    }));
+  const addPaymentMethod = async (method) => {
+    try {
+      const { data } = await usersAPI.addPaymentMethod(method);
+      setUser(u => ({ ...u, paymentMethods: data.paymentMethods }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Failed to add method.' };
+    }
   };
 
-  const removePaymentMethod = (id) =>
-    setUser(u => ({ ...u, paymentMethods:(u.paymentMethods||[]).filter(m => m.id!==id) }));
+  const removePaymentMethod = async (id) => {
+    try {
+      const { data } = await usersAPI.removePaymentMethod(id);
+      setUser(u => ({ ...u, paymentMethods: data.paymentMethods }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Failed to remove method.' };
+    }
+  };
 
-  const setPrimaryMethod = (id) =>
-    setUser(u => ({ ...u, paymentMethods:(u.paymentMethods||[]).map(m => ({ ...m, primary:m.id===id })) }));
+  const setPrimaryMethod = async (id) => {
+    try {
+      const { data } = await usersAPI.setPrimaryMethod(id);
+      setUser(u => ({ ...u, paymentMethods: data.paymentMethods }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Failed to update method.' };
+    }
+  };
 
-  const logout = () => setUser(null);
+  const updateProfile = async (updates) => {
+    try {
+      const { data } = await usersAPI.updateProfile(updates);
+      setUser(u => ({ ...u, ...data.user }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.response?.data?.error || 'Profile update failed.' };
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithGoogle, signup, updatePlan, addPaymentMethod, removePaymentMethod, setPrimaryMethod, logout }}>
-      {children}
+    <AuthContext.Provider value={{
+      user, loading,
+      login, loginWithGoogle, signup, logout,
+      updatePlan, updateProfile,
+      addPaymentMethod, removePaymentMethod, setPrimaryMethod,
+    }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 }

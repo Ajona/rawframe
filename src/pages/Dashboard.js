@@ -1,7 +1,9 @@
+import React, { useState, useEffect } from 'react';
+import { usersAPI, uploadsAPI, paymentsAPI } from '../services/api';
 import PaymentModal from '../components/PaymentModal';
-import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
 
 const C = {
   ink:'#0e0d0b', cream:'#f5f2ec', warm:'#e8e0d0',
@@ -91,47 +93,43 @@ function StatCard({ label, value, sub, accent }) {
 
 /* ── OVERVIEW ─────────────────────────── */
 function Overview() {
-  const bars = [120,240,180,390,310,520];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun'];
-  const max = Math.max(...bars);
+  const [stats,   setStats]   = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    usersAPI.getDashboardStats()
+      .then(res => setStats(res.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div style={{ color:'#7a7468', padding:'2rem' }}>Loading…</div>;
+  if (!stats)  return <div style={{ color:'#b84c2e', padding:'2rem' }}>Failed to load stats.</div>;
+
+  const max = Math.max(...(stats.monthlyData || []).map(m => m.amount), 1);
+
   return (
     <div>
       <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:'1.6rem', fontWeight:700, marginBottom:'1.5rem' }}>Overview</h2>
       <div style={{ display:'flex', gap:16, marginBottom:32 }}>
-        <StatCard label="Total Earnings" value="$1,760" sub="All time" accent={C.gold} />
-        <StatCard label="This Month"     value="$520"   sub="+67% vs last month" />
-        <StatCard label="Files Sold"     value="143"    sub="Across 28 buyers" />
-        <StatCard label="Active Uploads" value="37"     sub="12 in collections" />
+        <StatCard label="Total Earnings" value={`$${stats.totalEarnings}`}  sub="All time"                accent={C.gold} />
+        <StatCard label="This Month"     value={`$${stats.monthEarnings}`}  sub="Current month" />
+        <StatCard label="Files Sold"     value={stats.totalSales}           sub={`Across ${stats.uniqueBuyers} buyers`} />
+        <StatCard label="Active Uploads" value={stats.totalFiles}           sub="Your uploads" />
       </div>
       <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:6, padding:'1.5rem', marginBottom:24 }}>
         <div style={{ fontSize:'0.78rem', fontWeight:500, marginBottom:16, textTransform:'uppercase', letterSpacing:'0.08em', color:C.muted }}>Monthly Earnings (USD)</div>
         <div style={{ display:'flex', alignItems:'flex-end', gap:12, height:140 }}>
-          {bars.map((v,i) => (
+          {(stats.monthlyData || []).map((m, i, arr) => (
             <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-              <div style={{ fontSize:'0.7rem', color:C.muted }}>${v}</div>
+              <div style={{ fontSize:'0.7rem', color:C.muted }}>${m.amount}</div>
               <div style={{ width:'100%', background:C.gold, borderRadius:'2px 2px 0 0',
-                height:`${(v/max)*100}px`, opacity: i===bars.length-1 ? 1 : 0.5 }} />
-              <div style={{ fontSize:'0.7rem', color:C.muted }}>{months[i]}</div>
+                height:`${(m.amount / max) * 100}px`,
+                opacity: i === arr.length - 1 ? 1 : 0.5 }} />
+              <div style={{ fontSize:'0.7rem', color:C.muted }}>{m.month}</div>
             </div>
           ))}
         </div>
-      </div>
-      <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:6, padding:'1.5rem' }}>
-        <div style={{ fontSize:'0.78rem', fontWeight:500, marginBottom:16, textTransform:'uppercase', letterSpacing:'0.08em', color:C.muted }}>Recent Sales</div>
-        {[
-          { file:'NairobiMarathon_raw_047.jpg', buyer:'buyer_***293', amount:'$4.99', time:'2 hours ago' },
-          { file:'FashionWeek_collection_12.zip', buyer:'studio_***841', amount:'$18.00', time:'5 hours ago' },
-          { file:'Landscape_4K_001.mp4', buyer:'buyer_***107', amount:'$12.00', time:'Yesterday' },
-        ].map((r,i,a) => (
-          <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-            padding:'0.75rem 0', borderBottom: i<a.length-1 ? `1px solid ${C.border}` : 'none' }}>
-            <div>
-              <div style={{ fontSize:'0.875rem', fontWeight:500 }}>{r.file}</div>
-              <div style={{ fontSize:'0.75rem', color:C.muted }}>Purchased by {r.buyer} · {r.time}</div>
-            </div>
-            <div style={{ fontSize:'0.95rem', fontWeight:700, color:C.success }}>+{r.amount}</div>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -140,14 +138,17 @@ function Overview() {
 /* ── UPLOADS ──────────────────────────── */
 function Uploads() {
   const navigate = useNavigate();
-  const uploads = [
-    { name:'NairobiMarathon_raw_047.jpg', type:'Photo', tag:'#NairobiMarathon', price:'$4.99', sales:14, status:'active' },
-    { name:'FashionWeek_collection_12.zip', type:'Collection', tag:'#AfricaFashionWeek', price:'$18.00', sales:6, status:'active' },
-    { name:'Landscape_4K_001.mp4', type:'Video', tag:'Nature', price:'$12.00', sales:9, status:'active' },
-    { name:'FoodShoot_editorial_03.jpg', type:'Photo', tag:'Food', price:'$3.50', sales:21, status:'active' },
-    { name:'RealEstate_interior_07.jpg', type:'Photo', tag:'Real Estate', price:'$9.00', sales:3, status:'active' },
-    { name:'Concert_raw_backstage.jpg', type:'Photo', tag:'#LagosFilmFest', price:'$6.00', sales:0, status:'pending' },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [uploads, setUploads] = useState([]);
+
+  useEffect(() => {
+    uploadsAPI.getMyUploads()
+      .then(res => setUploads(res.data.files || []))
+      .catch(() => setUploads([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div style={{ color:'#7a7468', padding:'2rem' }}>Loading uploads…</div>;
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem' }}>
@@ -200,69 +201,195 @@ function Uploads() {
 /* ── TRANSACTIONS ─────────────────────── */
 function Transactions() {
   const [tab, setTab] = useState('all');
+  const [txns, setTxns] = useState([]);
+  const [earnings, setEarnings] = useState({
+    available: 0,
+    pending: 0,
+    withdrawn: 0
+  });
+  const [loading, setLoading] = useState(true);
   const [showWithdraw, setShowWithdraw] = useState(false);
-  const txns = [
-    { id:'TXN-0091', file:'NairobiMarathon_raw_047.jpg', buyer:'buyer_***293', amount:4.99, platform:1.75, creator:3.24, date:'Mar 22, 2025', status:'paid' },
-    { id:'TXN-0090', file:'FashionWeek_collection_12.zip', buyer:'studio_***841', amount:18.00, platform:6.30, creator:11.70, date:'Mar 22, 2025', status:'paid' },
-    { id:'TXN-0089', file:'Landscape_4K_001.mp4', buyer:'buyer_***107', amount:12.00, platform:4.20, creator:7.80, date:'Mar 21, 2025', status:'paid' },
-    { id:'TXN-0088', file:'FoodShoot_editorial_03.jpg', buyer:'buyer_***554', amount:3.50, platform:1.23, creator:2.28, date:'Mar 20, 2025', status:'withdrawn' },
-    { id:'TXN-0087', file:'NairobiMarathon_raw_031.jpg', buyer:'buyer_***293', amount:4.99, platform:1.75, creator:3.24, date:'Mar 19, 2025', status:'pending' },
-  ];
-  const filtered = tab==='all' ? txns : txns.filter(t => t.status===tab);
-  const sColor = { paid:C.success, pending:'#854F0B', withdrawn:C.muted };
-  const sBg    = { paid:'#eaf3de', pending:'#faeeda', withdrawn:'#f1efe8' };
+
+  useEffect(() => {
+    paymentsAPI.getTransactions()
+      .then(res => {
+        setTxns(res.data.transactions || []);
+        setEarnings(res.data.earnings || {
+          available: 0,
+          pending: 0,
+          withdrawn: 0
+        });
+      })
+      .catch(() => {
+        setTxns([]);
+        setEarnings({ available: 0, pending: 0, withdrawn: 0 });
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = tab === 'all' ? txns : txns.filter(t => t.status === tab);
+
+  const sColor = {
+    paid: C.success,
+    pending: '#854F0B',
+    withdrawn: C.muted
+  };
+
+  const sBg = {
+    paid: '#eaf3de',
+    pending: '#faeeda',
+    withdrawn: '#f1efe8'
+  };
+
+  if (loading) {
+    return (
+      <div style={{ color:'#7a7468', padding:'2rem' }}>
+        Loading transactions…
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:'1.6rem', fontWeight:700, marginBottom:'1.5rem' }}>Transactions</h2>
+      <h2 style={{
+        fontFamily:"'Playfair Display',serif",
+        fontSize:'1.6rem',
+        fontWeight:700,
+        marginBottom:'1.5rem'
+      }}>
+        Transactions
+      </h2>
+
+      {/* ✅ FIXED: dynamic earnings instead of mock values */}
       <div style={{ display:'flex', gap:16, marginBottom:24 }}>
-        <StatCard label="Available" value="$26.83" sub="Cleared balance" accent={C.gold} />
-        <StatCard label="Pending"   value="$3.24"  sub="Processing" />
-        <StatCard label="Withdrawn" value="$2.28"  sub="All time" />
+        <StatCard
+          label="Available"
+          value={`$${earnings.available}`}
+          sub="Cleared balance"
+          accent={C.gold}
+        />
+        <StatCard
+          label="Pending"
+          value={`$${earnings.pending}`}
+          sub="Processing"
+        />
+        <StatCard
+          label="Withdrawn"
+          value={`$${earnings.withdrawn}`}
+          sub="All time"
+        />
       </div>
-      <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${C.border}` }}>
+
+      {/* Tabs */}
+      <div style={{
+        display:'flex',
+        borderBottom:`1px solid ${C.border}`
+      }}>
         {['all','paid','pending','withdrawn'].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            style={{ padding:'0.6rem 1.25rem', border:'none', background:'transparent',
-              fontSize:'0.8rem', fontWeight:tab===t?500:400, cursor:'pointer',
-              color:tab===t?C.ink:C.muted, textTransform:'capitalize',
-              borderBottom:tab===t?`2px solid ${C.gold}`:'2px solid transparent',
-              marginBottom:-1, fontFamily:"'DM Sans',sans-serif" }}>{t}</button>
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding:'0.6rem 1.25rem',
+              border:'none',
+              background:'transparent',
+              fontSize:'0.8rem',
+              fontWeight:tab===t?500:400,
+              cursor:'pointer',
+              color:tab===t?C.ink:C.muted,
+              textTransform:'capitalize',
+              borderBottom:tab===t ? `2px solid ${C.gold}` : '2px solid transparent',
+              marginBottom:-1,
+              fontFamily:"'DM Sans',sans-serif"
+            }}
+          >
+            {t}
+          </button>
         ))}
       </div>
-      <div style={{ background:C.white, border:`1px solid ${C.border}`, borderTop:'none', borderRadius:'0 0 6px 6px', overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr',
-          padding:'0.75rem 1.25rem', background:'#faf7f0', borderBottom:`1px solid ${C.border}`,
-          fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.08em', color:C.muted, fontWeight:500 }}>
-          {['ID','File','Date','Total','Platform','Creator','Status'].map(h=><div key={h}>{h}</div>)}
+
+      {/* Table */}
+      <div style={{
+        background:C.white,
+        border:`1px solid ${C.border}`,
+        borderTop:'none',
+        borderRadius:'0 0 6px 6px',
+        overflow:'hidden'
+      }}>
+        <div style={{
+          display:'grid',
+          gridTemplateColumns:'1fr 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr',
+          padding:'0.75rem 1.25rem',
+          background:'#faf7f0',
+          borderBottom:`1px solid ${C.border}`,
+          fontSize:'0.72rem',
+          textTransform:'uppercase',
+          letterSpacing:'0.08em',
+          color:C.muted,
+          fontWeight:500
+        }}>
+          {['ID','File','Date','Total','Platform','Creator','Status'].map(h => (
+            <div key={h}>{h}</div>
+          ))}
         </div>
-        {filtered.map((t,i) => (
-          <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr',
-            padding:'0.9rem 1.25rem', alignItems:'center', fontSize:'0.82rem',
-            borderBottom: i<filtered.length-1 ? `1px solid ${C.border}` : 'none' }}>
-            <div style={{ fontFamily:'monospace', fontSize:'0.75rem', color:C.muted }}>{t.id}</div>
-            <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', paddingRight:8, fontWeight:500 }}>{t.file}</div>
+
+        {filtered.map((t, i) => (
+          <div key={i} style={{
+            display:'grid',
+            gridTemplateColumns:'1fr 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr',
+            padding:'0.9rem 1.25rem',
+            alignItems:'center',
+            fontSize:'0.82rem',
+            borderBottom: i < filtered.length - 1 ? `1px solid ${C.border}` : 'none'
+          }}>
+            <div style={{ fontFamily:'monospace', color:C.muted }}>{t.id}</div>
+            <div style={{ fontWeight:500 }}>{t.file}</div>
             <div style={{ color:C.muted }}>{t.date}</div>
-            <div style={{ fontWeight:500 }}>${t.amount.toFixed(2)}</div>
-            <div style={{ color:C.danger }}>-${t.platform.toFixed(2)}</div>
-            <div style={{ color:C.success, fontWeight:500 }}>+${t.creator.toFixed(2)}</div>
-            <div><span style={{ background:sBg[t.status], color:sColor[t.status],
-              fontSize:'0.68rem', padding:'0.2rem 0.5rem', borderRadius:100,
-              textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:500 }}>{t.status}</span></div>
+            <div style={{ fontWeight:500 }}>${t.amount}</div>
+            <div style={{ color:C.danger }}>-${t.platform}</div>
+            <div style={{ color:C.success }}>+${t.creator}</div>
+            <div>
+              <span style={{
+                background:sBg[t.status],
+                color:sColor[t.status],
+                fontSize:'0.68rem',
+                padding:'0.2rem 0.5rem',
+                borderRadius:100,
+                textTransform:'uppercase',
+                letterSpacing:'0.06em',
+                fontWeight:500
+              }}>
+                {t.status}
+              </span>
+            </div>
           </div>
         ))}
       </div>
+
+      {/* Withdraw button stays same */}
       <div style={{ marginTop:20, display:'flex', justifyContent:'flex-end' }}>
-        <button onClick={() => setShowWithdraw(true)}
-          style={{ background:C.ink, color:C.cream, border:'none', borderRadius:2,
-            padding:'0.75rem 2rem', fontSize:'0.875rem', fontWeight:500,
-            cursor:'pointer', fontFamily:"'DM Sans',sans-serif" }}>
-          Withdraw $26.83
+        <button
+          onClick={() => setShowWithdraw(true)}
+          style={{
+            background:C.ink,
+            color:C.cream,
+            border:'none',
+            borderRadius:2,
+            padding:'0.75rem 2rem',
+            fontSize:'0.875rem',
+            fontWeight:500,
+            cursor:'pointer',
+            fontFamily:"'DM Sans',sans-serif"
+          }}
+        >
+          Withdraw ${earnings.available}
         </button>
+
         <PaymentModal
           isOpen={showWithdraw}
           onClose={() => setShowWithdraw(false)}
-          onSuccess={() => { setShowWithdraw(false); }}
-          amount="26.83"
+          onSuccess={() => setShowWithdraw(false)}
+          amount={earnings.available}
           currency="USD"
           title="Withdraw Earnings"
           subtitle="Choose where to send your funds"
@@ -333,7 +460,7 @@ function Collections() {
 
 /* ── PROFILE ──────────────────────────── */
 function Profile() {
-  const { user, addPaymentMethod, removePaymentMethod, setPrimaryMethod } = useAuth();
+  const { user, addPaymentMethod, removePaymentMethod, setPrimaryMethod, updateProfile } = useAuth();
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [form, setForm] = useState({
     name: user?.name || '', bio:'Documentary and street photographer based in Nairobi.',
@@ -344,7 +471,19 @@ function Profile() {
   const set = (k,v) => setForm(p => ({ ...p, [k]:v }));
   const FIELDS = ['Nature & Wildlife','Travel','Food & Drink','Fashion','Real Estate','Sports & Events','Architecture','Street Photography','General'];
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  const handleSave = async () => {
+    const result = await updateProfile({
+      name:     form.name,
+      bio:      form.bio,
+      website:  form.website,
+      instagram: form.instagram,
+      content_fields: form.fields,
+    });
+    if (result.ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+  };
 
   const inputStyle = {
     width:'100%', padding:'0.65rem 0.85rem', border:`1px solid ${C.border}`,

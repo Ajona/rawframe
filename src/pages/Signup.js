@@ -41,34 +41,38 @@ export default function Signup() {
     return Object.keys(e).length === 0;
   };
 
-  const handleGoogle = (profile) => {
-    setGoogleUser(profile);
-    setForm(p => ({ ...p, name:profile.name, email:profile.email }));
-    setStep(1); // skip account form, go straight to plan
+  const handleGoogle = async (googleData) => {
+    // googleData.idToken comes from the real Google OAuth button
+    const result = await loginWithGoogle(googleData.idToken, form.plan, form.fields);
+    if (result.ok) {
+      navigate('/dashboard');
+    } else {
+      setErrors({ general: result.error });
+    }
   };
 
   const handleNext = () => { if (validateStep0()) setStep(1); };
 
   const handleFinish = () => {
     if (form.plan !== 'starter') {
-      setShowPay(true); // show payment modal for paid plans
+      setShowPay(true);
     } else {
       createAccount();
     }
   };
 
-  const createAccount = () => {
-    if (googleUser) {
-      loginWithGoogle({ ...googleUser, plan: form.plan });
+  const createAccount = async () => {
+    const result = await signup(form.name, form.email, form.password, form.plan, form.fields);
+    if (result.ok) {
+      navigate('/dashboard');
     } else {
-      signup(form.name, form.email, form.password, form.plan);
+      setErrors({ general: result.error });
     }
-    navigate('/dashboard');
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setShowPay(false);
-    createAccount();
+    await createAccount();
   };
 
   const planAmount = form.plan === 'pro' ? '12.00' : form.plan === 'studio' ? '49.00' : null;
@@ -112,6 +116,13 @@ export default function Signup() {
           );
         })}
       </div>
+      {errors.general && (
+        <div style={{ background:'#fce8e8', color:'#b84c2e', padding:'0.7rem 1rem',
+          borderRadius:4, fontSize:'0.85rem', marginBottom:'1rem',
+          border:'1px solid rgba(184,76,46,0.2)' }}>
+          {errors.general}
+        </div>
+)}
 
       <div style={{ background:'#fff', border:`1px solid ${C.border}`, borderRadius:8,
         padding:'2.5rem', width:'100%', maxWidth: step===1 ? 540 : 420 }}>

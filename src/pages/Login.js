@@ -20,16 +20,17 @@ export default function Login() {
     return null;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const err = validate();
     if (err) { setError(err); return; }
     setLoading(true);
-    setTimeout(() => {
-      const result = login(form.email, form.password);
-      setLoading(false);
-      if (result.ok) navigate(result.user.role==='admin' ? '/admin' : '/dashboard');
-      else setError(result.error);
-    }, 600);
+    const result = await login(form.email, form.password);
+    setLoading(false);
+    if (result.ok) {
+      navigate(result.user.role === 'admin' ? '/admin' : '/dashboard');
+    } else {
+      setError(result.error);
+    }
   };
 
   const handleGoogle = (profile) => {
@@ -63,14 +64,6 @@ export default function Login() {
           <div style={{ flex:1, height:1, background:C.border }} />
           <span style={{ fontSize:'0.78rem', color:C.muted }}>or sign in with email</span>
           <div style={{ flex:1, height:1, background:C.border }} />
-        </div>
-
-        {/* Demo hint */}
-        <div style={{ background:'#faf7f0', border:`1px solid rgba(201,168,76,0.3)`,
-          borderRadius:4, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:'0.78rem' }}>
-          <div style={{ fontWeight:500, color:C.ink, marginBottom:4 }}>Demo accounts</div>
-          <div style={{ color:C.muted }}>Creator: jane@rawframe.io · any password</div>
-          <div style={{ color:C.muted }}>Admin: admin@rawframe.io · any password</div>
         </div>
 
         {error && (
